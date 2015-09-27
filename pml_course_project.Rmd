@@ -1,0 +1,100 @@
+---
+title: 'Practical Machine Learning: Course Project Writeup'
+author: "Anand Akella"
+date: "September 26, 2015"
+output: html_document
+---
+Project Background:
+The goal of this project is to quantify personal activity data collected from accelerometers such as Jawbone Up, Nike FuelBand, and Fitbit of 6 participants. These accelerometers and other monitoring devices placed on belt, forearm, arm, and dumbell collect data to help quantify patterns and habits.Participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways.More information is available from the website: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+Download and Prepare Datasets:
+Create a folder named Practical Machine Learning on desktop and set it as Working Directory. Download and save datasets into this working directory. 
+
+The training data for this project are available here: 
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: 
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+```{r load libraries, echo=TRUE}
+# Load necessary libraries - install any unavailable packages 
+# using install.packages("packagename") command. Install "caret" with dependencies=TRUE
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(RColorBrewer)
+library(rattle)
+library(randomForest)
+#install.packages('e1071', dependencies=TRUE)
+```
+
+```{r process data, echo=TRUE}
+# files downloaded to the working directory and saved
+trainData <- read.csv("pml-training.csv")
+testData  <- read.csv("pml-testing.csv")
+set.seed(4174) # set seed to load same seed for reproducibility
+```
+
+Select only those variables that have no missing values or NA from the actual test data
+```{r filter variables with missing values,echo=TRUE}
+valmissVariables <- sapply(testData,
+                           function (x) any(is.na(x) | x == ""))# variables missing values or having NA
+# all other variables for belt, forearm, arm and dumbell can be classified as predictor Candidate 
+predCandidate <- !valmissVariables & grepl("belt|[^(fore)]arm|dumbbell|forearm",names(valmissVariables))
+predCandidates <- names(valmissVariables)[predCandidate] # complete set of predictor variables
+# subset trainData Predictor candidates to include "classe" as output
+includeVariables <- c("classe",predCandidates)
+trainData <- trainData[includeVariables] # subset of traindata to include only the include variables
+trainData$classe <- factor(trainData$classe)# convert classe into a factor
+```
+
+Split the Training Dataset into two sets with 60% training and 40% probing dataset
+```{r splitdata,echo=TRUE}
+trainSplit   <- createDataPartition(y=trainData$classe, p=0.6, list=FALSE)
+trainDataSet <- trainData[trainSplit, ]  # 60% training dataset
+probeDataSet <- trainData[-trainSplit, ] # 40% probe dataset
+```
+
+Check for Near Zero Variance in any of the variables. Since any variables that have NA or missing values have been excluded the test should yield no variables with near zero variance
+```{r NZV test,echo=TRUE}
+nzv <- nearZeroVar(trainDataSet, saveMetrics=TRUE)
+if (any(nzv$nzv)) nzv else message("No variables with near zero variance")
+```
+
+Prediction ML Algorithms:
+```{r Decision tree plot, echo=TRUE}
+modelFit1 <- rpart(classe ~ ., data=trainDataSet, method="class")# model fit
+fancyRpartPlot(modelFit1) # plot the decision tree
+#Predicting
+predictionFit1 <- predict(modelFit1, probeDataSet, type = "class")
+confusionMatrix(predictionFit1, probeDataSet$classe)# confusion matrix to test final prediction results
+```
+
+Prediction ML Algorithms: Random Forests
+```{r Decision tree plot random forests, echo=TRUE}
+modelFit2 <- randomForest(classe ~ ., data=trainDataSet)# model fit
+#fancyRpartPlot(modelFit2) # plot the decision tree
+#Predicting
+predictionFit2 <- predict(modelFit2, probeDataSet, type = "class")
+confusionMatrix(predictionFit2, probeDataSet$classe)# confusion matrix to test final prediction results
+```
+
+Conclusion: As expected Prediction using the Random Forests algorithm has much more accuracy of 0.9935 closer to 1 and hence we choose this algorithm as our prediction model for the test data
+
+Generating Output files for submission using the Testing data set provided:
+```{r project submission files, echo=TRUE}
+predictionsFinal <- predict(modelFit2, testData, type = "class")# predictions for test data
+
+# below code will generate files for submission
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(predictionsFinal)
+```
+(c)anakella 09/2015
+
